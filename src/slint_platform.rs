@@ -1,5 +1,6 @@
 use core::cell::RefCell;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 const DISPLAY_WIDTH: usize = 800;
 const DISPLAY_HEIGHT: usize = 480;
@@ -129,6 +130,7 @@ struct EspPlatform {
     i2c: RefCell<I2C>,
     window: Rc<slint::platform::software_renderer::MinimalSoftwareWindow>,
     timer: esp_idf_svc::timer::EspTimerService<esp_idf_svc::timer::Task>,
+    queue: Arc<Mutex<Vec<Event>>>,
 }
 
 impl EspPlatform {
@@ -205,6 +207,7 @@ impl EspPlatform {
             i2c: i2c.into(),
             window,
             timer: esp_idf_svc::timer::EspTimerService::new().unwrap(),
+            queue: Default::default(),
         })
     }
 }
@@ -262,6 +265,14 @@ impl slint::platform::Platform for EspPlatform {
 
         loop {
             slint::platform::update_timers_and_animations();
+
+            let queue = std::mem::take(&mut *self.queue.lock().unwrap());
+            for event in queue {
+                match event {
+                    Event::Invoke(event) => event(),
+                    Event::Quit => break,
+                }
+            }
 
             match self.touch.get_touch(&mut self.i2c.borrow_mut()) {
                 Ok(Some(point)) => {
@@ -329,6 +340,38 @@ impl slint::platform::Platform for EspPlatform {
             // FIXME
             esp_idf_svc::hal::task::do_yield();
         }
+    }
+
+    fn debug_log(&self, arguments: core::fmt::Arguments) {
+        log::debug!("{}", arguments);
+    }
+
+    fn new_event_loop_proxy(&self) -> Option<Box<dyn slint::platform::EventLoopProxy>> {
+        Some(Box::new(EspEventLoopProxy {
+            queue: self.queue.clone(),
+        }))
+    }
+}
+
+enum Event {
+    Quit,
+    Invoke(Box<dyn FnOnce() + Send>),
+}
+struct EspEventLoopProxy {
+    queue: Arc<Mutex<Vec<Event>>>,
+}
+impl slint::platform::EventLoopProxy for EspEventLoopProxy {
+    fn quit_event_loop(&self) -> Result<(), slint::EventLoopError> {
+        self.queue.lock().unwrap().push(Event::Quit);
+        Ok(())
+    }
+
+    fn invoke_from_event_loop(
+        &self,
+        event: Box<dyn FnOnce() + Send>,
+    ) -> Result<(), slint::EventLoopError> {
+        self.queue.lock().unwrap().push(Event::Invoke(event));
+        Ok(())
     }
 }
 

@@ -24,5 +24,14 @@ fn main() {
 
     slint_platform::init(touch_i2c);
 
+    let mut timer = esp_idf_svc::hal::timer::TimerDriver::new(p.timer00, &Default::default()).unwrap();
+
+    slint::spawn_local(async move {
+        for _ in 0..5 {
+            timer.delay(5 * timer.tick_hz()).await.unwrap();
+            eprintln!("hello from future");
+        }
+    }).unwrap();
+
     MainWindow::new().unwrap().run().unwrap();
 }
