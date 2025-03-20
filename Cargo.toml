@@ -25,6 +25,9 @@ experimental = ["esp-idf-svc/experimental"]
 [dependencies]
 log = "0.4"
 esp-idf-svc = { version = "0.51", features = ["critical-section", "embassy-time-driver", "embassy-sync"] }
+slint = { version = "1.10.0", default-features = false, features = ["compat-1-2", "unsafe-single-threaded", "libm", "renderer-software"]}
+gt911 = "0.3"
 
 [build-dependencies]
 embuild = "0.33"
+slint-build = { version = "1.10.0", features = ["sdf-fonts"]}
